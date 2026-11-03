@@ -23,7 +23,29 @@ class World {
 
         this.markings = [];
 
+        this.cars = [];
+
         this.generate();
+    }
+
+    static load(info){
+        const world = new World(new Graph());
+        world.graph = Graph.load(info.graph);
+        world.roadWidth = info.roadWidth;
+        world.roadRoundness = info.roadRoundness;
+        world.buildingWidth= info.buildingWidth;
+        world.buildingMinLength = info.buildingMinLength;
+        world.spacing = info.spacing;
+        world.treeSize = info.treeSize;
+        world.envelopes = info.envelopes.map((e) => Envelope.load(e));
+        world.roadBorders = info.roadBorders.map((b) => new Segment(b.p1, b.p2));
+        world.buildings = info.buildings.map((e) => Building.load(e));
+        world.trees = info.trees.map((t) => new Tree(t.center, info.treeSize));
+        world.laneGuides = info.laneGuides.map((l) => new Segment(l.p1,l.p2))
+        world.markings = info.markings.map((m) => Marking.load(m));
+        world.zoom = info.zoom;
+        world.offset = info.offset;
+        return world;
     }
 
     generate() {
@@ -39,6 +61,18 @@ class World {
 
         this.laneGuides.length = 0;
         this.laneGuides.push(...this.#generateLaneGuides());
+    }
+
+    generateCars(){
+        this.cars.length = 0;
+        for (const marking of this.markings){
+            if(marking.type == "start"){
+                this.cars.push(new Car(marking.center,marking.directionVector,marking.img.width,marking.img.height)
+            );
+
+
+            }
+        }
     }
 
     #generateLaneGuides(){
@@ -182,7 +216,8 @@ class World {
             env.draw(ctx, {fill: "#BBB",stroke: "#BBB",lineWidth: 15});
         }
         for (const marking of this.markings){
-            marking.draw(ctx);
+            if(this.cars.length == 0 || marking.type != "start"){
+            marking.draw(ctx);}
         }
         for (const seg of this.graph.segments){
             seg.draw(ctx, {color:"white",width: 4 , dash: [10,10]})
@@ -190,6 +225,12 @@ class World {
         for (const seg of this.roadBorders){
             seg.draw(ctx, {color: "white", width: 4});
         }
+
+        for (const car of this.cars){
+            car.draw(ctx);
+            car.updateCar(this.laneGuides,this.roadBorders,this.markings);
+        }
+
         const items = [...this.buildings , ...this.trees];  // Draw trees and buildings at the same time
         items.sort(
             (a,b) =>
