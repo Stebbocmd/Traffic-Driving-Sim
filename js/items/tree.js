@@ -1,8 +1,8 @@
 class Tree {
-    constructor(center,size,heightCoeff = 0.3){
+    constructor(center,size,height = 60){
         this.center = center;
         this.size = size; // base of the tree
-        this.heightCoeff = heightCoeff;
+        this.height = height;
         this.base = this.#generateLevel(center,size);
     }
 
@@ -19,8 +19,7 @@ class Tree {
     }
 
     draw(ctx,viewPoint) {
-        const diff = subtract(this.center,viewPoint);
-        const top = add(this.center,scale(diff,this.heightCoeff));
+        const top = getFake3dPoint(this.center, viewPoint, this.height);
 
         const levelCount = 7;
         for (let level = 0;level < levelCount; level++){

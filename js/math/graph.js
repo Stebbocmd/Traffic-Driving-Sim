@@ -65,6 +65,65 @@ class Graph {
         return segs;
     }
 
+    getShortestPath(start, end, prevPoint = null,nextEndPoint = null) {
+        for (const point of this.points){
+            point.dist = Number.MAX_SAFE_INTEGER;
+            point.visited = false;
+            point.prev = null;
+        }
+
+        let currentPoint = start;
+        currentPoint.dist = 0;
+
+        while (!end.visited) {
+            const segs = this.getSegmentsWithPoint(currentPoint);
+            const fromPoint = currentPoint.equals(start) ? prevPoint : currentPoint.prev;
+            for (const seg of segs) {
+                const otherPoint = seg.p1.equals(currentPoint) ? seg.p2 : seg.p1;
+                if (fromPoint && segs.length > 1) {
+                    const inDir = normalize(subtract(currentPoint, fromPoint));
+                    const outDir = normalize(subtract(otherPoint, currentPoint));
+                    if (dot(inDir, outDir) < -0.7) {
+                        continue; // Impedisce inversioni a U e svolte illegali a V (> 135°)
+                    }
+                }
+                if (nextEndPoint && currentPoint.equals(nextEndPoint) && otherPoint.equals(end) && segs.length > 1) {
+                    continue; // Impedisce di entrare nel segmento Target contromano
+                }
+                if (otherPoint.visited) {
+                    continue;
+                }
+                if (currentPoint.dist + seg.length() < otherPoint.dist) {
+                    otherPoint.dist = currentPoint.dist + seg.length();
+                    otherPoint.prev = currentPoint;
+                }
+            }
+            currentPoint.visited = true;
+
+            const unvisited = this.points.filter((p)=> p.visited == false);
+            const dists = unvisited.map((p) => p.dist);
+            currentPoint = unvisited.find((p) => p.dist == Math.min(...dists));
+            if(!currentPoint || currentPoint.dist == Number.MAX_SAFE_INTEGER){
+                break; // Non reachable Target 
+            }
+        }
+
+        const path = [];
+        let current = end;
+        while(current){
+            path.push(current);
+            current = current.prev;
+        }
+
+        for (const point of this.points){
+            delete point.dist;
+            delete point.visited;
+            delete point.prev;
+        }
+
+        return path.reverse();
+    }
+
     removePoint(point) {
         const segs = this.getSegmentsWithPoint(point);
         for (const seg of segs){

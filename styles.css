@@ -1,29 +1,62 @@
 /* Made by: Stefano Tisi */
 body {
-    background-color: black;
+    background-color: #181a1b;
     text-align: center;
+    margin: 0;
+    overflow: hidden;
+    font-family: system-ui, -apple-system, Arial, sans-serif;
 }
 
-h1{
+h1 {
     color: white;
-    font-family: Arial;
+    margin: 8px 0;
+    font-size: 22px;
+    letter-spacing: 1px;
 }
 
 #myCanvas {
     background-color: rgb(41, 104, 41);
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
+}
+
+#controls {
+    margin-top: 8px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 6px;
 }
 
 button, .file-input-label {
-    display: inline-block;
-    background-color:white;
-    font-size:20px;
-    padding: 5px 7px 7px 5px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background-color: white;
+    font-size: 20px;
+    padding: 6px 10px;
     border: none;
-    border-radius: 5px;
+    border-radius: 6px;
     text-shadow: 1px 1px black;
     cursor: pointer;
+    transition: transform 0.1s;
 }
 
-input[type="file"]{
+button:hover, .file-input-label:hover {
+    transform: scale(1.08);
+}
+
+input[type="file"] {
     display: none;
+}
+
+#osmPanel {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background-color: rgba(20, 20, 20, 0.92);
+    padding: 24px;
+    border-radius: 12px;
+    box-shadow: 0 0 0 5000px rgba(0, 0, 0, 0.7);
 }

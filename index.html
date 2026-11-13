@@ -15,6 +15,7 @@
             📁
             <input type="file" id="fileInput" accept=".world" onchange="load(event)"/>
          </label>
+         <button onclick="openOsmPanel()">🗺️</button>
          <button id="playBtn" onclick="play()">▶️</button>
          <button id="pauseBtn" onclick="pause()">⏸️</button>
          &nbsp;
@@ -26,6 +27,15 @@
          <button id="lightBtn" onclick="setMode('light')">🚦</button>
          <button id="startBtn" onclick="setMode('start')">🚙</button>
          <button id="targetBtn" onclick="setMode('target')">🎯</button>
+         
+         <div id="osmPanel" style="display:none;">
+            <textarea id="osmDataContainer" rows="10" cols="50"
+               placeholder="Incolla qui i dati JSON di OpenStreetMap..."></textarea>
+            <div>
+               <button onclick="parseOsmData()">✔️</button>
+               <button onclick="closeOsmPanel()">❌</button>
+            </div>
+         </div>
       </div>
 
       <script src="js/world.js"></script>
@@ -51,14 +61,15 @@
       <script src="js/items/tree.js"></script>
       <script src="js/items/building.js"></script>
       <script src="js/math/utils.js"></script>
+      <script src="js/math/osm.js"></script>
       <script src="js/math/graph.js"></script>
       <script src="js/primitives/point.js"></script>
       <script src="js/primitives/segments.js"></script>
       <script src="js/primitives/polygon.js"></script>
       <script src="js/primitives/envelope.js"></script>
       <script>
-         myCanvas.width = 600;
-         myCanvas.height = 600;
+         myCanvas.width = window.innerWidth - 30;
+         myCanvas.height = window.innerHeight - 130;
 
          const ctx = myCanvas.getContext("2d");
 
@@ -96,7 +107,7 @@
                oldGraphHash = graph.hash();
             }
             const viewPoint = scale(viewport.getOffset(), -1);
-            world.draw(ctx, viewPoint);
+            world.draw(ctx, viewPoint,viewport.zoom);
             ctx.globalAlpha = 0.3;
             for (const tool of Object.values(tools)) {
                tool.editor.display();
@@ -147,6 +158,7 @@
 
          function setMode(mode) {
             dissableEditors();
+            world.cars.length = 0;
             tools[mode].button.style.backgroundColor = "white";
             tools[mode].button.style.filter = "";
             tools[mode].editor.enable();
@@ -165,13 +177,41 @@
             if(world.cars.length == 0){
             world.generateCars();}
             else for (const car of world.cars){
-               car.speed = 3;
+               car.speed = 20;
+               car.maxSpeed = 20;
             }
          }
          function pause(){
             for (const car of world.cars) {
                car.speed = 0;
+               car.maxSpeed = 0;
             }
+         }
+         function openOsmPanel() {
+            osmPanel.style.display = "block";
+         }
+
+         function closeOsmPanel() {
+            osmPanel.style.display = "none";
+         }
+
+         function parseOsmData() {
+            if (osmDataContainer.value == "") {
+               alert("Incolla prima i dati di OpenStreetMap!");
+               return;
+            }
+            const res = Osm.parseRoads(JSON.parse(osmDataContainer.value));
+            graph.points = res.points;
+            graph.segments = res.segments;
+            world.markings.length = 0;
+            world.cars.length = 0;
+
+            viewport.offset = new Point(-res.width / 2, -res.height / 2);
+            viewport.zoom = Math.max(
+               1,
+               Math.min(40, Math.max(res.width / myCanvas.width, res.height / myCanvas.height))
+            );
+            closeOsmPanel();
          }
       </script>
    </body>

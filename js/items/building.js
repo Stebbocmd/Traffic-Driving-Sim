@@ -1,5 +1,5 @@
 class Building {
-   constructor(poly, height = 200) {
+   constructor(poly, height = 80) {
       this.base = poly;
       this.height = height;
    }

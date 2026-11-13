@@ -13,12 +13,14 @@ class GraphEditor {
 
     enable(){
         this.#addEventListeners();
+        this.enabled = true;
     }
 
     disable(){
         this.#removeEventListeners();
         this.selected = false;
         this.hovered = false;
+        this.enabled = false;
     }
 
     #addEventListeners() {
@@ -60,7 +62,7 @@ class GraphEditor {
     }
 
     #handleMouseMove(evt){
-         this.mouse = this.viewport.getMouse(evt, true);
+        this.mouse = this.viewport.getMouse(evt, true);
             this.hovered = getNearestPoint(this.mouse,this.graph.points, 10 * this.viewport.zoom);
             if(this.dragging == true){
                 this.selected.x = this.mouse.x;
@@ -88,6 +90,7 @@ class GraphEditor {
     }
 
     display() {
+        if(!this.enabled) return;
         this.graph.draw(this.ctx);
         if (this.hovered) {
             this.hovered.draw(this.ctx, {fill: true});

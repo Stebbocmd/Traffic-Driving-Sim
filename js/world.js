@@ -24,6 +24,7 @@ class World {
         this.markings = [];
 
         this.cars = [];
+        this.frameCount = 0;
 
         this.generate();
     }
@@ -63,21 +64,44 @@ class World {
         this.laneGuides.push(...this.#generateLaneGuides());
     }
 
-    generateCars(){
+        generateCars() {
+        const startMarkings = this.markings.filter((m) => m instanceof Start);
+        const target = this.markings.find((m) => m instanceof Target);
         this.cars.length = 0;
-        for (const marking of this.markings){
-            if(marking.type == "start"){
-                this.cars.push(new Car(marking.center,marking.directionVector,marking.img.width,marking.img.height)
-            );
+        for (const marking of startMarkings) {
+            const car = new Car(marking.center, marking.directionVector, 30, 50);
+            car.target = target;
+            if (target) {
+                const startCenter = add(marking.center, scale(perpendicular(marking.directionVector), this.roadWidth / 4));
+                const endCenter = add(target.center, scale(perpendicular(target.directionVector), this.roadWidth / 4));
+                const startSeg = getNearestSegment(startCenter, this.graph.segments);
+                const endSeg = getNearestSegment(endCenter, this.graph.segments);
 
+                const startPoint = dot(subtract(startSeg.p1, startSeg.p2), marking.directionVector) < 0 ? startSeg.p1 : startSeg.p2;
+                const prevPoint = startPoint.equals(startSeg.p1) ? startSeg.p2 : startSeg.p1;
+                const endPoint = dot(subtract(endSeg.p1, endSeg.p2), target.directionVector) > 0 ? endSeg.p1 : endSeg.p2;
+                const nextEndPoint = endPoint.equals(endSeg.p1) ? endSeg.p2 : endSeg.p1;
 
+                let path = this.graph.getShortestPath(startPoint, endPoint, prevPoint, nextEndPoint);
+                if (path.length <= 1 && !startPoint.equals(endPoint)) {
+                    path = this.graph.getShortestPath(startPoint, endPoint, prevPoint);
+                }
+
+                const pathSegments = [startSeg];
+                for (let i = 0; i < path.length - 1; i++) {
+                    pathSegments.push(new Segment(path[i], path[i + 1]));
+                }
+                if (!pathSegments.some((s) => s.equals(endSeg))) {
+                    pathSegments.push(endSeg);
+                }
+                car.laneGuides = this.#generateLaneGuides(pathSegments);
             }
+            this.cars.push(car);
         }
     }
-
-    #generateLaneGuides(){
+    #generateLaneGuides(segments = this.graph.segments){
         const tmpEnvelopes = [];
-        for (const seg of this.graph.segments){
+        for (const seg of segments){
             tmpEnvelopes.push(
                 new Envelope(
                     seg,
@@ -86,9 +110,10 @@ class World {
                 )
             );
         }
-        const segments = Polygon.union(tmpEnvelopes.map((e) => e.poly));
-        return segments;
+        const unionSegments = Polygon.union(tmpEnvelopes.map((e) => e.poly));
+        return unionSegments;
     }
+
     #generateTrees(){
         const points = [
             ...this.roadBorders.map((s) => [s.p1,s.p2]).flat(),
@@ -211,7 +236,49 @@ class World {
         return bases.map((b) => new Building(b));
     }
 
-    draw(ctx,viewPoint){
+    #updateLights(){
+    const lights = this.markings.filter((m) => m instanceof Light);
+    const controlCenters = [];
+    for (const light of lights) {
+        const point = getNearestPoint(light.center, this.graph.points);
+        if (!point) continue;
+            let controlCenter = controlCenters.find((p) => p.equals(point));
+        if (!controlCenter) {
+            controlCenter = new Point(point.x, point.y);
+            controlCenter.lights = [light];
+            controlCenters.push(controlCenter);
+        } else {
+        controlCenter.lights.push(light);
+        }
+    }
+    const Tgreen = 4;
+    const Tyellow = 2;
+    const Tphase = Tgreen + Tyellow;
+    const tick = Math.floor(this.frameCount / 60);
+
+    for (const center of controlCenters){
+        let isRoadA = false;
+        const refDir = center.lights[0].directionVector;
+        const delay = Math.floor(distance(center, controlCenters[0]) / 180);
+        const cTick = (tick + delay) % (Tphase *2);
+        const turnForRoadA = cTick < Tphase;
+        const color = (cTick % Tphase) < Tgreen ? "green" : "yellow";
+        for (const light of center.lights){
+            if(Math.abs(dot(light.directionVector,refDir)) > 0.7){
+                isRoadA = true;
+            }
+            else { isRoadA = false;}
+            if (isRoadA == turnForRoadA) {
+                light.state = color;
+            }
+            else {light.state = "red";}
+        }
+    }
+    this.frameCount++;
+    }
+
+    draw(ctx,viewPoint,zoom = 1){
+        this.#updateLights();
         for (const env of this.envelopes){
             env.draw(ctx, {fill: "#BBB",stroke: "#BBB",lineWidth: 15});
         }
@@ -228,16 +295,18 @@ class World {
 
         for (const car of this.cars){
             car.draw(ctx);
-            car.updateCar(this.laneGuides,this.roadBorders,this.markings);
+            car.updateCar(car.laneGuides || this.laneGuides,this.roadBorders,this.markings,this.cars);
         }
 
-        const items = [...this.buildings , ...this.trees];  // Draw trees and buildings at the same time
-        items.sort(
-            (a,b) =>
+            const items = [...this.buildings, ...this.trees].filter(
+                (i) => i.base.distanceToPoint(viewPoint) < 1200 * zoom
+            );
+            items.sort(
+                (a, b) =>
                 b.base.distanceToPoint(viewPoint) -
                 a.base.distanceToPoint(viewPoint)
-        );
-        for (const item of items){
+            );
+        for (const item of items) {
             item.draw(ctx, viewPoint);
         }
     }
