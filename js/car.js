@@ -90,7 +90,7 @@ class Car{
 
     #checkMarkings() {
         this.speed = this.maxSpeed;
-        if(this.target && distance(this.center,this.target.center) < 65 ){
+        if(this.target && distance(this.center,this.target.center) < 80 ){
             this.speed = 0;
             this.state = "stop";
             return;

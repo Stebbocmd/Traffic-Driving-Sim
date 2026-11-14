@@ -2,11 +2,11 @@
 <!DOCTYPE html>
 <html>
    <head>
-      <title>World Editor</title>
+      <title>Traffic Driving Sim</title>
       <link rel="stylesheet" href="styles.css"/>
    </head>
    <body>
-      <h1>World Editor</h1>
+      <h1>Traffic Driving Sim</h1>
       <canvas id="myCanvas"></canvas>
       <div id="controls">
          <button onclick="dispose()">🗑️</button>
@@ -118,6 +118,7 @@
          function dispose() {
             tools["graph"].editor.dispose();
             world.markings.length = 0;
+            world.osmBuildings = [];
          }
 
          function save() {
@@ -203,7 +204,9 @@
             const res = Osm.parseRoads(JSON.parse(osmDataContainer.value));
             graph.points = res.points;
             graph.segments = res.segments;
+            world.osmBuildings = res.buildings;
             world.markings.length = 0;
+            world.markings.push(...res.markings);
             world.cars.length = 0;
 
             viewport.offset = new Point(-res.width / 2, -res.height / 2);

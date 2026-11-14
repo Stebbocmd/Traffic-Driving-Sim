@@ -57,36 +57,97 @@ class World {
             );
         }
         this.roadBorders = Polygon.union(this.envelopes.map((e) => e.poly));
-        this.buildings = this.#generateBuildings();
+        if(this.osmBuildings && this.osmBuildings.length > 0){
+            this.buildings = this.osmBuildings.filter(
+                (b) => !this.envelopes.some((e) => b.base.intersectsPoly(e.poly))
+            );
+        } else {
+            this.buildings = this.#generateBuildings(); // If there aren't osm Buildings
+        }
         this.trees = this.#generateTrees();
 
         this.laneGuides.length = 0;
         this.laneGuides.push(...this.#generateLaneGuides());
     }
 
-        generateCars() {
+    generateCars(carCount = 40) {
         const startMarkings = this.markings.filter((m) => m instanceof Start);
-        const target = this.markings.find((m) => m instanceof Target);
+        const manualTarget = this.markings.find((m) => m instanceof Target);
         this.cars.length = 0;
+
+        // 1) Se ci sono Start piazzati a mano, usiamo quelli
         for (const marking of startMarkings) {
             const car = new Car(marking.center, marking.directionVector, 30, 50);
-            car.target = target;
-            if (target) {
-                const startCenter = add(marking.center, scale(perpendicular(marking.directionVector), this.roadWidth / 4));
-                const endCenter = add(target.center, scale(perpendicular(target.directionVector), this.roadWidth / 4));
-                const startSeg = getNearestSegment(startCenter, this.graph.segments);
-                const endSeg = getNearestSegment(endCenter, this.graph.segments);
+            this.assignRandomTarget(car, manualTarget);
+            this.cars.push(car);
+        }
 
-                const startPoint = dot(subtract(startSeg.p1, startSeg.p2), marking.directionVector) < 0 ? startSeg.p1 : startSeg.p2;
-                const prevPoint = startPoint.equals(startSeg.p1) ? startSeg.p2 : startSeg.p1;
-                const endPoint = dot(subtract(endSeg.p1, endSeg.p2), target.directionVector) > 0 ? endSeg.p1 : endSeg.p2;
-                const nextEndPoint = endPoint.equals(endSeg.p1) ? endSeg.p2 : endSeg.p1;
+        // 2) Se non ci sono Start manuali, generiamo le auto in modo aleatorio sulla mappa
+        if (startMarkings.length == 0 && this.graph.segments.length > 0) {
+            const validSegs = this.graph.segments.filter((s) => s.length() >= 90);
+            let tries = 0;
+            while (this.cars.length < carCount && tries < carCount * 10) {
+                tries++;
+                const seg = validSegs[Math.floor(Math.random() * validSegs.length)];
+                if (!seg) break;
 
-                let path = this.graph.getShortestPath(startPoint, endPoint, prevPoint, nextEndPoint);
-                if (path.length <= 1 && !startPoint.equals(endPoint)) {
-                    path = this.graph.getShortestPath(startPoint, endPoint, prevPoint);
+                let dir = seg.directionVector();
+                if (!seg.oneWay && Math.random() < 0.5) {
+                    dir = scale(dir, -1);
+                }
+                const mid = lerp2D(seg.p1, seg.p2, 0.3 + Math.random() * 0.4);
+                const laneCenter = add(mid, scale(perpendicular(dir), -this.roadWidth / 4));
+
+                // Evitiamo di far nascere due auto una sopra l'altra
+                if (this.cars.some((c) => distance(c.center, laneCenter) < 140)) {
+                    continue;
                 }
 
+                const car = new Car(laneCenter, dir, 30, 50);
+                if (this.assignRandomTarget(car, manualTarget)) {
+                    this.cars.push(car);
+                }
+            }
+        }
+    }
+
+    assignRandomTarget(car, manualTarget = null) {
+        const startCenter = add(car.center, scale(perpendicular(car.directionVector), this.roadWidth / 4));
+        const startSeg = getNearestSegment(startCenter, this.graph.segments);
+        if (!startSeg) return false;
+
+        const startPoint = dot(subtract(startSeg.p1, startSeg.p2), car.directionVector) < 0 ? startSeg.p1 : startSeg.p2;
+        const prevPoint = startPoint.equals(startSeg.p1) ? startSeg.p2 : startSeg.p1;
+
+        for (let tries = 0; tries < 15; tries++) {
+            let endSeg, endDir, targetObj;
+
+            if (manualTarget) {
+                const endCenter = add(manualTarget.center, scale(perpendicular(manualTarget.directionVector), this.roadWidth / 4));
+                endSeg = getNearestSegment(endCenter, this.graph.segments);
+                endDir = manualTarget.directionVector;
+                targetObj = manualTarget;
+            } else {
+                const candidates = this.graph.segments.filter(
+                    (s) => s.length() >= 80 && !s.equals(startSeg) && distance(average(s.p1, s.p2), car.center) > 300
+                );
+                if (candidates.length == 0) break;
+                endSeg = candidates[Math.floor(Math.random() * candidates.length)];
+                endDir = endSeg.directionVector();
+                if (!endSeg.oneWay && Math.random() < 0.5) {
+                    endDir = scale(endDir, -1);
+                }
+                const endMid = average(endSeg.p1, endSeg.p2);
+                const endLaneCenter = add(endMid, scale(perpendicular(endDir), -this.roadWidth / 4));
+                targetObj = new Target(endLaneCenter, endDir, this.roadWidth / 2, this.roadWidth / 2);
+            }
+
+            const endPoint = dot(subtract(endSeg.p1, endSeg.p2), endDir) > 0 ? endSeg.p1 : endSeg.p2;
+            const nextEndPoint = endPoint.equals(endSeg.p1) ? endSeg.p2 : endSeg.p1;
+
+            let path = this.graph.getShortestPath(startPoint, endPoint, prevPoint, nextEndPoint);
+
+            if (path.length > 1 || startPoint.equals(endPoint)) {
                 const pathSegments = [startSeg];
                 for (let i = 0; i < path.length - 1; i++) {
                     pathSegments.push(new Segment(path[i], path[i + 1]));
@@ -94,11 +155,15 @@ class World {
                 if (!pathSegments.some((s) => s.equals(endSeg))) {
                     pathSegments.push(endSeg);
                 }
+                car.target = targetObj;
                 car.laneGuides = this.#generateLaneGuides(pathSegments);
+                return true;
             }
-            this.cars.push(car);
+            if (manualTarget) break;
         }
+        return false;
     }
+
     #generateLaneGuides(segments = this.graph.segments){
         const tmpEnvelopes = [];
         for (const seg of segments){
@@ -173,9 +238,9 @@ class World {
         return trees;
     }
 
-    #generateBuildings(){
+    #generateBuildings() {
         const tmpEnvelopes = [];
-        for (const seg of this.graph.segments){
+        for (const seg of this.graph.segments) {
             tmpEnvelopes.push(
                 new Envelope(
                     seg,
@@ -187,52 +252,65 @@ class World {
 
         const guides = Polygon.union(tmpEnvelopes.map((e) => e.poly));
 
-        for (let i = 0; i < guides.length; i ++){
-            const seg = guides[i];
-            if(seg.length() < this.buildingMinLength){
-                guides.splice(i,1);
-                i--; // So that it doesn't skip, because every item in the array will be shifted if something is removed
-            }
-        }
-
-        const supports = [];
-        for (let seg of guides){
-            const len = seg.length() + this.spacing;
-            const buildingCount = Math.floor(
-                len / (this.buildingMinLength + this.spacing)
-            );
-            const buildingLength = len / buildingCount - this.spacing;
+        const bases = [];
+        for (const seg of guides) {
+            const totalLen = seg.length();
+            if (totalLen < this.buildingMinLength) continue;
 
             const dir = seg.directionVector();
+            let offset = 0;
 
-            let q1 = seg.p1;
-            let q2 = add(q1,scale(dir, buildingLength));
-            supports.push(new Segment(q1,q2));
+            while (offset + this.buildingMinLength <= totalLen) {
+                // 20% di probabilità di lasciare uno spazio aperto / giardino tra gli edifici
+                if (Math.random() < 0.2) {
+                    offset += this.spacing * 1.5;
+                    continue;
+                }
 
-            for(let i = 2 ; i<= buildingCount; i++){
-                q1 = add(q2,scale(dir,this.spacing));
-                q2 = add(q1,scale(dir,buildingLength));
-                supports.push(new Segment(q1,q2));
+                // Lunghezza e larghezza variabili per evitare l'effetto "caserma"
+                const randLen = this.buildingMinLength * (0.85 + Math.random() * 0.75);
+                const buildingLength = Math.min(randLen, totalLen - offset);
+                if (buildingLength < this.buildingMinLength * 0.8) break;
+
+                const q1 = add(seg.p1, scale(dir, offset));
+                const q2 = add(q1, scale(dir, buildingLength));
+                const support = new Segment(q1, q2);
+
+                const customWidth = this.buildingWidth * (0.75 + Math.random() * 0.3);
+                bases.push(new Envelope(support, customWidth).poly);
+
+                offset += buildingLength + this.spacing * (0.9 + Math.random() * 0.5);
             }
         }
 
-        const bases = [];
-        for (const seg of supports){
-            bases.push(new Envelope(seg, this.buildingWidth).poly);
-
+        // 1) Rimuoviamo le case che invadono o sono troppo vicine a qualsiasi strada
+        for (let i = 0; i < bases.length; i++) {
+            for (const env of this.envelopes) {
+                if (
+                    bases[i].intersectsPoly(env.poly) ||
+                    bases[i].distanceToPoly(env.poly) < this.spacing * 0.4
+                ) {
+                    bases.splice(i, 1);
+                    i--;
+                    break;
+                }
+            }
         }
 
+        // 2) Rimuoviamo le case che si sovrappongono o sono troppo vicine tra loro
         const eps = 0.001;
-        for (let i = 0; i < bases.length - 1; i++){
-            for(let j = i + 1; j < bases.length; j++){
-                if (bases[i].intersectsPoly(bases[j]) || 
+        for (let i = 0; i < bases.length - 1; i++) {
+            for (let j = i + 1; j < bases.length; j++) {
+                if (
+                    bases[i].intersectsPoly(bases[j]) ||
                     bases[i].distanceToPoly(bases[j]) < this.spacing - eps
-                ){
-                    bases.splice(j,1);
+                ) {
+                    bases.splice(j, 1);
                     j--;
                 }
             }
         }
+
         return bases.map((b) => new Building(b));
     }
 
@@ -292,22 +370,41 @@ class World {
         for (const seg of this.roadBorders){
             seg.draw(ctx, {color: "white", width: 4});
         }
-
-        for (const car of this.cars){
+        
+        const hasManualTarget = this.markings.some((m) => m instanceof Target);
+        for (const car of this.cars) {
             car.draw(ctx);
-            car.updateCar(car.laneGuides || this.laneGuides,this.roadBorders,this.markings,this.cars);
+            car.updateCar(car.laneGuides || this.laneGuides, this.roadBorders, this.markings, this.cars);
+            if (car.state == "stop" && !hasManualTarget) {
+                car.state = "moving";
+                car.speed = car.maxSpeed;
+                // Se da quel punto (es. vicolo cieco a senso unico) non c'è uscita, riposiziona l'auto
+                if (!this.assignRandomTarget(car)) {
+                    const validSegs = this.graph.segments.filter((s) => s.length() >= 90);
+                    const seg = validSegs[Math.floor(Math.random() * validSegs.length)];
+                    if (seg) {
+                        car.directionVector = seg.directionVector();
+                        const mid = average(seg.p1, seg.p2);
+                        car.center = add(mid, scale(perpendicular(car.directionVector), -this.roadWidth / 4));
+                        this.assignRandomTarget(car);
+                    }
+                }
+            }
         }
 
-            const items = [...this.buildings, ...this.trees].filter(
-                (i) => i.base.distanceToPoint(viewPoint) < 1200 * zoom
-            );
-            items.sort(
-                (a, b) =>
-                b.base.distanceToPoint(viewPoint) -
-                a.base.distanceToPoint(viewPoint)
-            );
+        const maxViewDist = 1200 * zoom;
+        const items = [];
+        for (const item of [...this.buildings, ...this.trees]) {
+            const d = item.base.distanceToPoint(viewPoint);
+            if (d < maxViewDist) {
+                item._dist = d;
+                items.push(item);
+            }
+        }
+        items.sort((a, b) => b._dist - a._dist);
         for (const item of items) {
             item.draw(ctx, viewPoint);
         }
+        
     }
 }

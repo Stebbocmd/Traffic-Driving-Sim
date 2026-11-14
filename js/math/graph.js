@@ -80,14 +80,14 @@ class Graph {
             const fromPoint = currentPoint.equals(start) ? prevPoint : currentPoint.prev;
             for (const seg of segs) {
                 const otherPoint = seg.p1.equals(currentPoint) ? seg.p2 : seg.p1;
-                if (fromPoint && segs.length > 1) {
+                if (fromPoint) {
                     const inDir = normalize(subtract(currentPoint, fromPoint));
                     const outDir = normalize(subtract(otherPoint, currentPoint));
                     if (dot(inDir, outDir) < -0.7) {
                         continue; // Impedisce inversioni a U e svolte illegali a V (> 135°)
                     }
                 }
-                if (nextEndPoint && currentPoint.equals(nextEndPoint) && otherPoint.equals(end) && segs.length > 1) {
+                if (nextEndPoint && currentPoint.equals(nextEndPoint) && otherPoint.equals(end)) {
                     continue; // Impedisce di entrare nel segmento Target contromano
                 }
                 if (otherPoint.visited) {
@@ -102,7 +102,8 @@ class Graph {
 
             const unvisited = this.points.filter((p)=> p.visited == false);
             const dists = unvisited.map((p) => p.dist);
-            currentPoint = unvisited.find((p) => p.dist == Math.min(...dists));
+            const minDist = Math.min(...dists);
+            currentPoint = unvisited.find((p) => p.dist == minDist);
             if(!currentPoint || currentPoint.dist == Number.MAX_SAFE_INTEGER){
                 break; // Non reachable Target 
             }
